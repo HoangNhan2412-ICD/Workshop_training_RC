@@ -82,3 +82,112 @@ Trong Wokwi, L298N/DC motor được mô phỏng bằng:
 2. Ảnh hưởng gì: người học dễ nhầm trọng tâm, mô phỏng có thể không chạy như lab cơ bản, và lỗi mạng sẽ che mất lỗi điều khiển motor/servo.
 3. Đã sửa gì: project này không thêm WebSocket. Điều khiển tự động dùng `AUTO_TEST`, điều khiển tay dùng Serial Monitor.
 4. Trạng thái sau sửa: project giữ đúng phạm vi Lab 1; WebSocket nên tách thành project hoặc mode riêng cho phần hardware thật.
+
+
+# Wokwi ESP32 RC Car Lab 2
+
+## 1. Mục tiêu
+
+Mô phỏng LAB 2: ESP32 tạo WiFi AP, chạy web server và WebSocket server để nhận lệnh điều khiển xe RC.
+Lệnh gồm `speed` và `angle`, sau đó ESP32 điều khiển L298N logic, ENA PWM và servo.
+
+## 2. Đối chiếu với workshop
+
+| Hạng mục trong workshop | Trên Wokwi | Trạng thái | Ghi chú ngắn |
+|---|---|---|---|
+| ESP32 DevKit V1 | Dùng `wokwi-esp32-devkit-v1` | Đúng | Bám theo board workshop. |
+| WiFi AP `RC_CAR_ESP32` | `WiFi.softAP("RC_CAR_ESP32", "12345678")` | Đúng | AP chạy trong mô phỏng ESP32. |
+| Password `12345678` | Đặt đúng trong code | Đúng | Dùng cho phần cứng thật. |
+| WebSocket server | `WebSocketsServer` port 81 | Đúng | Dễ chạy trên Wokwi hơn `/ws` cùng port 80. |
+| Web UI điều khiển | Trang web có nút F/B/L/R/S và slider `maxSpeed` | Đúng | Gửi JSON qua WebSocket. |
+| L298N | Thay bằng LED/probe/Logic Analyzer | Thay thế | Quan sát IN1, IN2, ENA. |
+| DC motor | Thay bằng tín hiệu IN1/IN2/ENA | Thay thế | Không mô phỏng tải motor thật. |
+| Servo | Dùng `wokwi-servo` | Đúng | PWM GPIO18. |
+| IN1 GPIO26 | LED IN1 + Logic Analyzer D1 | Đúng | Code và sơ đồ cùng GPIO26. |
+| IN2 GPIO27 | LED IN2 + Logic Analyzer D2 | Đúng | Code và sơ đồ cùng GPIO27. |
+| ENA GPIO25 | Logic Analyzer D0 + LED ENA | Đúng | Xem PWM tốc độ. |
+| Servo GPIO18 | Servo + Logic Analyzer D3 | Đúng | Có VIN và GND. |
+| Điều khiển bằng điện thoại thật | Cần test trên phần cứng thật | Không làm được | Wokwi không cho điện thoại thật kết nối AP mô phỏng như ESP32 thật. |
+
+## 3. Cách chạy trên Wokwi
+
+1. Mở project.
+2. Bấm Start Simulation.
+3. Mở Serial Monitor.
+4. Test bằng `F`, `B`, `L`, `R`, `S`, hoặc `180 90`.
+
+## 4. Cách chạy trên phần cứng thật
+
+1. Nạp code vào ESP32.
+2. Điện thoại kết nối WiFi `RC_CAR_ESP32`, password `12345678`.
+3. Mở browser `http://192.168.4.1/`.
+4. Dùng nút web để điều khiển xe.
+
+## 5. Expected behavior
+
+- Tiến: IN1 = HIGH, IN2 = LOW, ENA có PWM.
+- Lùi: IN1 = LOW, IN2 = HIGH, ENA có PWM.
+- Dừng: IN1 = LOW, IN2 = LOW, ENA = 0.
+- Rẽ trái: servo 45 độ.
+- Đi thẳng: servo 90 độ.
+- Rẽ phải: servo 135 độ.
+- D0 = ENA_PWM GPIO25.
+- D1 = IN1 GPIO26.
+- D2 = IN2 GPIO27.
+- D3 = SERVO GPIO18.
+
+## 6. Sai / khác so với workshop và cách xử lý
+
+### Vấn đề 1: Điện thoại thật không kết nối trực tiếp vào AP mô phỏng
+
+- Khác/sai ở đâu: Workshop dùng điện thoại thật kết nối WiFi AP của ESP32.
+- Vì sao: AP trong Wokwi là mô phỏng, không phát WiFi vật lý cho điện thoại thật kết nối như phần cứng.
+- Đã sửa/thay bằng: Thêm Serial fallback để test `F/B/L/R/S`, `180 90`, `-180 90` trong Wokwi; web UI giữ lại cho phần cứng thật.
+- Ảnh hưởng: Wokwi vẫn kiểm tra được logic điều khiển; trải nghiệm điện thoại thật cần test trên ESP32 thật.
+
+### Vấn đề 2: L298N thật được thay bằng LED/probe/Logic Analyzer
+
+- Khác/sai ở đâu: Workshop dùng module L298N thật để kéo motor.
+- Vì sao: Wokwi không mô phỏng đầy đủ L298N, dòng tải và sụt áp như mạch thật.
+- Đã sửa/thay bằng: IN1 GPIO26, IN2 GPIO27 và ENA GPIO25 được đưa ra LED/probe/Logic Analyzer.
+- Ảnh hưởng: Không kiểm tra được công suất L298N; vẫn kiểm tra đúng chiều quay và PWM.
+
+### Vấn đề 3: DC motor thật không được mô phỏng đầy đủ
+
+- Khác/sai ở đâu: Motor JGA25 thật có quán tính, tải, dòng khởi động và tốc độ vật lý.
+- Vì sao: Mô phỏng này chỉ tập trung vào tín hiệu điều khiển từ ESP32.
+- Đã sửa/thay bằng: Dùng IN1/IN2 để xem chiều và ENA PWM để xem tốc độ mong muốn.
+- Ảnh hưởng: Không thấy motor quay thật; vẫn đủ để kiểm tra code Lab 2 trước khi nối motor thật.
+
+### Vấn đề 4: Nguồn motor 7-12V không kiểm tra được trên Wokwi
+
+- Khác/sai ở đâu: Workshop cần nguồn 7-12V cấp cho L298N/motor.
+- Vì sao: Wokwi không kiểm tra nguồn công suất, sụt áp, nhiễu motor hoặc common GND như mạch thật.
+- Đã sửa/thay bằng: Servo dùng VIN/GND trong Wokwi, motor driver được thay bằng tín hiệu logic.
+- Ảnh hưởng: Phần nguồn motor bắt buộc test trên phần cứng thật.
+
+### Vấn đề 5: WebSocket dùng port 81 thay vì `/ws` chung port 80
+
+- Khác/sai ở đâu: Workshop mô tả WebSocket endpoint `/ws` trên web server.
+- Vì sao: `WebServer` + `WebSocketsServer` trên Arduino/Wokwi chạy ổn định hơn khi tách web port 80 và WebSocket port 81.
+- Đã sửa/thay bằng: Web server dùng port 80, WebSocket dùng port 81, web page kết nối `ws://<host>:81/`.
+- Ảnh hưởng: Chức năng gửi JSON `speed/angle` không đổi; chỉ khác endpoint.
+
+### Vấn đề 6: Không dùng ESPAsyncWebServer
+
+- Khác/sai ở đâu: Workshop có thể dùng hướng AsyncWebServer cho WebSocket.
+- Vì sao: `ESPAsyncWebServer` dễ lỗi thư viện/phụ thuộc trên Wokwi hơn.
+- Đã sửa/thay bằng: Dùng `WebServer.h` và `WebSocketsServer.h`.
+- Ảnh hưởng: Đủ cho Lab 2; code dễ compile hơn trong Wokwi.
+
+### Vấn đề 7: Thêm Serial fallback để test logic
+
+- Khác/sai ở đâu: Workshop Lab 2 điều khiển chính bằng web app.
+- Vì sao: Wokwi không test điện thoại thật kết nối AP mô phỏng đầy đủ.
+- Đã sửa/thay bằng: Thêm Serial Monitor nhận `F`, `B`, `L`, `R`, `S`, `180 90`, `-180 90`.
+- Ảnh hưởng: Không thay đổi logic chính; giúp kiểm tra motor, PWM và servo trong Wokwi.
+
+## 7. Kết luận
+
+Project chạy được trên Wokwi để kiểm tra code, pin map, PWM, servo và logic nhận lệnh.
+Phần WebSocket qua điện thoại thật, L298N thật, motor thật và nguồn 7-12V cần test trên phần cứng thật.
