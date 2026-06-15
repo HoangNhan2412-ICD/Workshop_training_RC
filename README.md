@@ -191,3 +191,109 @@ Lệnh gồm `speed` và `angle`, sau đó ESP32 điều khiển L298N logic, EN
 
 Project chạy được trên Wokwi để kiểm tra code, pin map, PWM, servo và logic nhận lệnh.
 Phần WebSocket qua điện thoại thật, L298N thật, motor thật và nguồn 7-12V cần test trên phần cứng thật.
+
+# Wokwi STM32 RC Car Lab
+
+## 1. Mục tiêu
+
+Project này mô phỏng BUỔI 2 của workshop RC car: STM32 điều khiển chiều quay motor DC qua IN1/IN2, tốc độ qua ENA PWM, servo lái qua PWM và nhận lệnh RF dạng frame 5 byte. Trên Wokwi, phần công suất L298N/motor thật được thay bằng LED, probe và Logic Analyzer để kiểm tra logic điều khiển trước khi làm mạch thật.
+
+## 2. Đối chiếu với workshop
+
+| Hạng mục trong workshop | Đã làm trên Wokwi | Trạng thái | Ghi chú ngắn |
+|---|---|---|---|
+| STM32F4 Discovery hoặc Nucleo-F411RE | Dùng `board-stm32-bluepill` | Thay thế | Wokwi hỗ trợ Blue Pill ổn định hơn cho Arduino-style STM32 |
+| CubeMX/HAL | Dùng Arduino-style STM32 | Thay thế | Dễ chạy trực tiếp trong Wokwi, vẫn giữ logic điều khiển |
+| IN1 điều khiển chiều motor | PA0, LED IN1, Logic Analyzer D1 | Đúng | `IN1 = PA0` |
+| IN2 điều khiển chiều motor | PA1, LED IN2, Logic Analyzer D2 | Đúng | `IN2 = PA1` |
+| ENA PWM điều khiển tốc độ | PA6, LED PWM, Logic Analyzer D0 | Đúng | PA6 là chân PWM hợp lệ trên Blue Pill |
+| Servo PWM | PB6, servo Wokwi, Logic Analyzer D3 | Thay thế | PB6 tương ứng hướng TIM4_CH1 trên STM32F103 |
+| USART2 TX/RX cho HC-12 | PA2 TX, PA3 RX nối Serial Monitor | Thay thế | Không có module HC-12 thật trong mô phỏng |
+| Frame RF 5 byte | Parser `0xAA speed angle flags checksum` | Đúng | Checksum XOR byte 0 đến 3 |
+| Watchdog 500 ms | `checkWatchdog()` | Đúng | Mất lệnh thì motor dừng |
+| PID preview | Chỉ giữ cấu trúc sẵn sàng mở rộng | Không làm được | Chưa có encoder/tải thật để đóng vòng PID |
+
+## 3. Cách chạy trên Wokwi
+
+1. Mở project Wokwi với các file này.
+2. Bấm Start Simulation.
+3. Mặc định `AUTO_TEST = 1`: quan sát Serial Monitor, servo, LED và Logic Analyzer.
+4. Muốn test tay hoặc frame RF, đổi `AUTO_TEST` thành `0`, rồi nhập lệnh trong Serial Monitor.
+
+## 4. Expected behavior
+
+* Tiến: IN1 = HIGH, IN2 = LOW, ENA có PWM.
+* Lùi: IN1 = LOW, IN2 = HIGH, ENA có PWM.
+* Dừng: IN1 = LOW, IN2 = LOW, ENA = 0.
+* Servo đổi góc 90, 135, 90 theo bài test.
+* Tốc độ 30%, 60%, 100% thể hiện bằng duty PWM trên ENA.
+* Frame RF hợp lệ sẽ cập nhật tốc độ, góc lái và reset watchdog.
+
+## 5. Sai / khác so với workshop và cách xử lý
+
+### Vấn đề 1: Board STM32 không đúng 100% như workshop
+
+* Khác/sai ở đâu: Workshop dùng STM32F4 Discovery hoặc Nucleo-F411RE, file `diagram.json` dùng `board-stm32-bluepill`.
+* Vì sao: Wokwi hỗ trợ mô phỏng Blue Pill thuận tiện hơn cho project Arduino-style STM32.
+* Đã sửa/thay bằng: Dùng STM32 Blue Pill, giữ đúng logic chính và giữ các chân bắt buộc PA0, PA1, PA2, PA3, PA6.
+* Ảnh hưởng: Không kiểm tra đúng tài nguyên TIM của F411RE, nhưng vẫn kiểm tra được logic motor, PWM, UART frame và servo.
+
+### Vấn đề 2: Không dùng CubeMX/HAL như workshop
+
+* Khác/sai ở đâu: Workshop hướng HAL/CubeMX, file `sketch.ino` dùng Arduino C++.
+* Vì sao: Arduino-style chạy nhanh và trực tiếp hơn trong Wokwi.
+* Đã sửa/thay bằng: Viết đủ hàm điều khiển `motorSetSpeed()`, `servoSetAngle()`, `rcDrive()`, `rfParseByte()`, `processRfFrame()`, `checkWatchdog()` và `runAutoTest()`.
+* Ảnh hưởng: Cần port lại sang HAL nếu nạp vào project CubeMX thật, nhưng thuật toán và pin map vẫn rõ ràng.
+
+### Vấn đề 3: TIM3/TIM4 không cấu hình trực tiếp như phần cứng thật
+
+* Khác/sai ở đâu: Workshop dùng timer PWM, còn `sketch.ino` dùng `analogWrite()` cho PA6 và thư viện Servo cho PB6.
+* Vì sao: Wokwi Arduino-style ẩn phần cấu hình timer.
+* Đã sửa/thay bằng: ENA PWM đặt tại PA6, servo đặt tại PB6 và đều đưa vào Logic Analyzer.
+* Ảnh hưởng: Kiểm tra được duty PWM và servo PWM, nhưng chưa xác nhận thanh ghi timer như HAL thật.
+
+### Vấn đề 4: HC-12 không mô phỏng đúng module RF thật
+
+* Khác/sai ở đâu: Workshop dùng HC-12 qua USART2 PA2/PA3, Wokwi không mô phỏng đầy đủ kênh RF HC-12.
+* Vì sao: HC-12 là module RF vật lý, Wokwi chủ yếu mô phỏng UART/Serial logic.
+* Đã sửa/thay bằng: PA2/PA3 được nối với Serial Monitor; code vẫn tạo luồng `HC12Serial` và parser frame RF 5 byte.
+* Ảnh hưởng: Kiểm tra được định dạng frame, checksum và watchdog, nhưng không kiểm tra được tầm RF, nhiễu RF hoặc baud thực của HC-12.
+
+### Vấn đề 5: L298N và DC motor thật không mô phỏng đầy đủ
+
+* Khác/sai ở đâu: Workshop dùng L298N và motor JGA25 hoặc tương đương, `diagram.json` dùng LED/probe/Logic Analyzer.
+* Vì sao: Wokwi không phản ánh đúng tải motor, quán tính, dòng khởi động và sụt áp công suất.
+* Đã sửa/thay bằng: IN1, IN2 hiển thị bằng LED; ENA PWM hiển thị bằng LED và Logic Analyzer.
+* Ảnh hưởng: Đủ để kiểm tra chiều quay và PWM, nhưng tốc độ/quán tính/tải motor phải test trên phần cứng thật.
+
+### Vấn đề 6: Nguồn motor 7-12V không được kiểm chứng
+
+* Khác/sai ở đâu: Workshop cần nguồn motor 7-12V cho L298N, Wokwi chỉ mô phỏng tín hiệu logic.
+* Vì sao: Mô phỏng này không có mạch nguồn công suất thật.
+* Đã sửa/thay bằng: Chỉ kiểm tra tín hiệu điều khiển IN1/IN2/ENA và servo.
+* Ảnh hưởng: Không đánh giá được nóng driver, dòng tải, sụt áp hoặc nhiễu nguồn.
+
+### Vấn đề 7: Serial command phải khớp README
+
+* Khác/sai ở đâu: Nếu README nói nhập `200 90` hoặc frame `AA C8 5A 00 38` mà code không parse thì test tay sẽ sai.
+* Vì sao: Lệnh tay và frame RF là hai dạng nhập khác nhau.
+* Đã sửa/thay bằng: `sketch.ino` parse được `F`, `B`, `L`, `R`, `S`, dạng `speed angle`, frame 4 byte tự tính checksum và frame 5 byte có checksum.
+* Ảnh hưởng: Người học có thể test AUTO_TEST, lệnh tay và frame RF trong cùng một project.
+
+### Vấn đề 8: Watchdog có thể làm AUTO_TEST dừng sai thời điểm
+
+* Khác/sai ở đâu: Watchdog 500 ms sẽ gọi `motorStop()` nếu `lastCmdTime` không được cập nhật trong AUTO_TEST.
+* Vì sao: AUTO_TEST có nhiều bước kéo dài 1-2 giây, dài hơn thời gian watchdog.
+* Đã sửa/thay bằng: Mỗi bước AUTO_TEST gọi `markCommandTime()` trong lúc chờ.
+* Ảnh hưởng: AUTO_TEST chạy đúng thời lượng, còn khi test tay thì mất lệnh quá 500 ms vẫn dừng motor như yêu cầu an toàn.
+
+### Vấn đề 9: PID chỉ là phần chuẩn bị
+
+* Khác/sai ở đâu: Workshop BUỔI 2 có hướng PID-ready, nhưng project chưa đóng vòng PID thật.
+* Vì sao: Chưa có encoder, feedback tốc độ và tải motor trong Wokwi.
+* Đã sửa/thay bằng: Code giữ hàm điều khiển theo tham số `speed` và `angle`, dễ thay `motorSetSpeed()` bằng PID sau này.
+* Ảnh hưởng: Lab hiện tại kiểm tra điều khiển mở vòng; PID cần thêm encoder và phần cứng thật hoặc mô phỏng riêng.
+
+## 6. Kết luận
+
+Project đã mô phỏng được phần điều khiển logic của BUỔI 2: pin map, chiều quay, PWM tốc độ, servo, frame RF, checksum và watchdog. Những phần vật lý như L298N thật, motor thật, nguồn 7-12V, HC-12 RF và PID có feedback cần kiểm tra trên phần cứng thật. Wokwi dùng tốt để kiểm tra code, pin map, PWM, UART frame và servo trước khi triển khai mạch thật.
